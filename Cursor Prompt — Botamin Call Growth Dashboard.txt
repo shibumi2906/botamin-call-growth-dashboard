@@ -1,0 +1,835 @@
+﻿Cursor Prompt — Botamin Call Growth Dashboard smol
+Build a complete working Streamlit product for the Botamin Product Owner AI-product test assignment.
+The product must run locally, be demo-ready, and must not require external AI API keys.
+The goal is to help a Botamin analyst turn a raw Excel export of sales bot calls into a clear product decision:
+* how the project is performing;
+* where the bot loses clients;
+* whether the main loss is technical or script-related;
+* what metric proves it;
+* which calls should be checked manually;
+* what first A/B test should be launched.
+Core flow:
+Excel → validation → preprocessing → local analysis → funnel → drop-off → adaptive overview → main growth opportunity → first A/B test → Ask the Dashboard → optional local Gemma helper → CSV export
+1. Build priority
+Implement in this order:
+1. Load Excel.
+2. Validate columns.
+3. Normalize data.
+4. Parse duration.
+5. Clean transcripts.
+6. Classify calls into funnel stages.
+7. Detect no-transcript technical risks.
+8. Calculate metrics.
+9. Build adaptive overview.
+10. Build funnel and drop-off table.
+11. Generate Main Growth Opportunity.
+12. Generate first A/B test.
+13. Add Ask the Dashboard.
+14. Add example calls for manual review.
+15. Add optional local Gemma helper.
+16. Add CSV export.
+17. Polish README and UI.
+The app must remain runnable after every step.
+2. File structure
+Use this exact simple structure:
+botamin-call-growth-dashboard/
+│
+├── app.py
+├── requirements.txt
+├── README.md
+├── .env.example
+│
+├── data/
+│   └── calls_week_anon.xlsx
+│
+└── src/
+    ├── data_processing.py
+    ├── classification.py
+    ├── metrics.py
+    ├── recommendations.py
+    ├── qa.py
+    ├── local_ai.py
+    └── export.py
+
+
+Do not create a large architecture.
+If something becomes complex, keep it simple and working.
+3. Tech stack
+Use:
+* Python 3.12
+* Streamlit
+* pandas
+* openpyxl
+* numpy
+* plotly
+* python-dotenv
+* requests
+requirements.txt:
+streamlit
+pandas
+openpyxl
+numpy
+plotly
+python-dotenv
+requests
+
+
+4. Input file
+Default input:
+data/calls_week_anon.xlsx
+
+
+Also support manual upload through Streamlit.
+Uploaded file has priority over the default file.
+Required columns:
+телефон
+дата и время
+длительность мин:сек
+статус
+запись аудио
+причина завершения
+история диалога юзер-бот
+
+
+If a required column is missing, show:
+Ошибка загрузки: в файле отсутствует обязательная колонка: <column_name>
+
+
+Do not show raw tracebacks in the UI.
+5. Normalized fields
+Create:
+phone_id
+timestamp
+duration_seconds
+status
+record_url
+termination_reason
+raw_transcript
+transcript_clean
+has_transcript
+transcript_length_chars
+
+
+Mapping:
+phone_id = телефон
+timestamp = дата и время
+duration_seconds = parsed длительность мин:сек
+status = статус
+record_url = запись аудио
+termination_reason = причина завершения
+raw_transcript = история диалога юзер-бот
+transcript_clean = cleaned raw_transcript
+
+
+Duration parsing must handle:
+* 00:03:00
+* 03:00
+* Excel time-like object
+* timedelta-like object
+* float fraction of day
+* empty / invalid values
+Important:
+00:03:00 = 3 minutes = 180 seconds
+
+
+Do not treat it as 3 seconds.
+If parsing fails, return 0 and continue.
+6. Funnel stages
+Classify each call into the maximum reached stage:
+0_no_dialog
+1_contact_greeting
+2_consent_permission
+3_offer_delivered
+4_relevance_signal_detected
+5_next_step_proposed
+6_next_step_accepted
+7_context_collected_or_correctly_finished
+
+
+Use transparent rule-based keyword logic.
+The original bot tasks are:
+1. Greet and get permission to talk.
+2. Tell about the offer.
+3. Agree on a meeting.
+4. Qualify the client.
+Interpret this as a B2B sales funnel.
+Do not treat “meeting” too literally.
+A meaningful next step can be:
+* meeting;
+* demo;
+* expert call;
+* manager callback;
+* sending materials;
+* call later;
+* decision-maker contact;
+* another meaningful continuation.
+Qualification may happen before or after next-step agreement.
+The real problem is when the bot proposes or gets a next step without any relevance signal.
+7. Key classification rules
+0_no_dialog
+Use when transcript is missing, empty, or call ended before meaningful contact.
+1_contact_greeting
+Signals:
+добрый день
+здравствуйте
+алло
+слушаю
+меня зовут
+
+
+2_consent_permission
+Signals:
+удобно говорить
+можно коротко
+буквально пару минут
+30 секунд
+я коротко
+в двух словах
+тридцать секунд
+ладно
+давайте
+
+
+3_offer_delivered
+Signals:
+ai-агент
+ии-агент
+искусственный интеллект
+бот
+автоматизируем
+прозванивает
+звонки
+продажи
+лиды
+заявки
+менеджерам
+кейс
+по вашей отрасли
+горячих клиентов
+
+
+4_relevance_signal_detected
+This does not mean full qualification.
+It only means there is a reason to continue.
+Use signal groups:
+Decision-maker / role:
+я руководитель
+я директор
+я собственник
+я владелец
+я принимаю решения
+это ко мне
+я занимаюсь продажами
+я отвечаю за продажи
+коммерческий директор
+передайте коммерческому
+соединю с руководителем
+могу передать директору
+
+
+Sales team / leads / CRM:
+отдел продаж
+менеджеры по продажам
+у нас есть менеджеры
+команда продаж
+есть база
+база клиентов
+лиды
+заявки
+входящие заявки
+исходящий прозвон
+поток клиентов
+много заявок
+объём базы
+crm
+битрикс
+amoCRM
+воронка продаж
+
+
+Meaningful question / interest:
+сколько стоит
+какая стоимость
+как это работает
+какие результаты
+какая конверсия
+есть кейсы
+можете показать кейс
+как внедряется
+с чем интегрируется
+интересно
+можно посмотреть
+пришлите информацию
+отправьте материалы
+давайте обсудим
+можно подробнее
+пусть специалист перезвонит
+
+
+Do not count as relevance by itself:
+алло
+да
+слушаю
+ну
+понятно
+угу
+хорошо
+говорите
+быстрее
+мне некогда
+не интересно
+не актуально
+перезвоните потом
+
+
+If uncertain, do not count relevance signal.
+Prefer fewer false positives over fake success.
+5_next_step_proposed
+Signals:
+давайте назначим
+созвон
+встреча
+демо
+презентация
+передам специалисту
+передам эксперту
+можем показать
+отправить материалы
+перезвонить позже
+подберём время
+эксперт созвонится
+онлайн-звонок
+
+
+6_next_step_accepted
+Signals:
+давайте
+да
+можно
+хорошо
+отправьте
+пусть перезвонят
+свяжитесь
+запишите
+завтра
+после обеда
+на почту
+в телеграм
+в понедельник
+готов
+подходит
+
+
+Important:
+A bot attempt to schedule a meeting is not success.
+Success requires explicit or implicit client acceptance.
+7_context_collected_or_correctly_finished
+Use when:
+* meeting agreed;
+* expert call agreed;
+* materials requested;
+* client asked to call later;
+* decision-maker contact passed;
+* useful context collected;
+* irrelevant client correctly finished;
+* client asked not to call and this was handled correctly.
+8. No-transcript technical diagnostics
+Do not treat all calls without transcript as simple early refusals.
+Create:
+no_transcript_type
+technical_suspect_no_transcript
+fixed_timeout_without_transcript
+bot_hangup_without_transcript
+early_no_dialog
+possible_system_anomaly
+
+
+Rules:
+Early no-dialog:
+has_transcript = false
+duration_seconds <= 10
+
+
+Suspicious no-transcript:
+has_transcript = false
+duration_seconds >= 30
+
+
+Fixed timeout without transcript:
+has_transcript = false
+duration_seconds in [180, 240]
+
+
+Bot hangup without transcript:
+has_transcript = false
+termination_reason = bot_hangup
+
+
+These calls must be visible in Technical / No-Transcript Diagnostics.
+If suspicious no-transcript volume is high, it can become the Main Growth Opportunity.
+9. Output classification fields
+Create:
+funnel_stage_reached
+drop_off_stage
+has_relevance_signal
+relevance_signal_type
+next_step_proposed
+next_step_accepted
+next_step_type
+is_qualified_next_step
+is_meeting_without_relevance_signal
+no_transcript_type
+technical_suspect_no_transcript
+fixed_timeout_without_transcript
+bot_hangup_without_transcript
+early_no_dialog
+possible_system_anomaly
+
+
+Drop-off mapping:
+0_no_dialog → before_contact
+1_contact_greeting → contact_to_consent
+2_consent_permission → consent_to_offer
+3_offer_delivered → offer_to_relevance_signal
+4_relevance_signal_detected → relevance_to_next_step_proposed
+5_next_step_proposed → proposal_to_acceptance
+6_next_step_accepted → acceptance_to_context_or_finish
+7_context_collected_or_correctly_finished → completed
+
+
+10. Main metric
+Main metric:
+Qualified Next Step Rate
+
+
+Formula:
+calls where:
+has_relevance_signal = true
+and next_step_proposed = true
+and next_step_accepted = true
+
+
+divided by total calls
+
+
+Also calculate:
+Qualified Next Step Rate From Conversations
+
+
+Formula:
+qualified next step calls / calls with transcript
+
+
+Reason:
+Meeting Rate can be misleading.
+The bot may book irrelevant clients.
+Qualified Next Step Rate measures meaningful business conversion.
+11. Metrics
+Calculate internally:
+Total Calls
+Calls With Transcript
+Calls Without Transcript
+No Transcript Rate
+Early No-dialog Calls
+Suspicious No-transcript Calls
+Fixed Timeout Without Transcript
+Bot Hangup Without Transcript
+Conversation Start Rate
+Offer Reach Rate
+Relevance Signal Rate
+Next Step Proposal Rate
+Next Step Acceptance Rate
+Qualified Next Step Rate
+Qualified Next Step Rate From Conversations
+Meeting Without Relevance Signal Rate
+Weakest Funnel Stage
+
+
+Do not show all metrics on the first screen.
+12. Adaptive overview
+The first screen must not look like an airplane cockpit.
+Always show:
+Total Calls
+Calls With Transcript
+Calls Without Transcript / No Transcript Rate
+
+
+Then show only the supporting metrics behind the current Main Growth Opportunity.
+If the main problem is technical/no-transcript, show:
+Suspicious No-transcript Calls
+Fixed Timeout Without Transcript
+Bot Hangup Without Transcript
+
+
+If the main problem is offer drop-off, show:
+Offer Reach Rate
+Offer → Relevance Signal Conversion
+Relevance Signal Rate
+
+
+If the main problem is next-step acceptance, show:
+Next Step Proposal Rate
+Next Step Acceptance Rate
+Proposal → Acceptance Conversion
+
+
+All other metrics must be available in details, tabs, tables, or Ask the Dashboard.
+13. Dashboard sections
+Build these sections:
+1. Header
+Botamin Call Growth Dashboard
+AI sales bot call analytics: funnel, drop-off, growth opportunity and first A/B test.
+
+
+2. Sidebar / Data Loading
+Show:
+* file uploader;
+* loaded file name;
+* total rows;
+* calls with transcript;
+* calls without transcript;
+* local Gemma status.
+3. Adaptive Executive Summary
+Show:
+* constant base metrics;
+* supporting metrics for the current hypothesis;
+* short analytical conclusion;
+* Main Growth Opportunity;
+* Recommended First Action / A/B Test.
+4. Funnel & Drop-off
+Show:
+* funnel chart;
+* funnel table;
+* step conversion;
+* drop-off count;
+* drop-off percentage;
+* weakest transition.
+5. Technical / No-Transcript Diagnostics
+Show:
+* all calls without transcript;
+* early no-dialog;
+* suspicious no-transcript;
+* fixed timeout without transcript;
+* bot_hangup without transcript;
+* suspicious calls table.
+6. Main Growth Opportunity
+Show:
+* main problem;
+* why it matters;
+* supporting metric;
+* affected funnel stage;
+* recommended focus.
+7. First A/B Test Recommendation
+Show:
+* hypothesis;
+* variant A;
+* variant B;
+* main metric;
+* guardrail metrics;
+* expected effect.
+8. Ask the Dashboard
+Use intent-based logic over calculated data.
+No external AI API.
+9. Optional Gemma Helper
+Use only on button click.
+Never run automatically.
+10. Example Calls For Manual Review
+Show examples from:
+* weakest drop-off stage;
+* suspicious no-transcript;
+* meeting without relevance signal;
+* proposal_to_acceptance;
+* offer_to_relevance_signal.
+11. Processed Data Preview
+12. CSV Export
+14. Recommendation logic
+Create:
+generate_main_growth_opportunity(metrics, funnel_table) -> dict
+
+
+Return:
+{
+  "main_problem": "...",
+  "why_it_matters": "...",
+  "supporting_metric": "...",
+  "affected_stage": "...",
+  "recommended_focus": "...",
+  "recommendation_type": "technical | script | offer | next_step | qualification | risk"
+}
+
+
+Priority order:
+1. Suspicious No-Transcript / Technical Loss
+If many calls have no transcript, especially:
+duration_seconds >= 30
+duration_seconds >= 60
+duration_seconds = 180 or 240
+termination_reason = bot_hangup
+
+
+then main problem is technical/no-transcript risk.
+2. Contact to Consent
+Test opening phrase.
+3. Consent to Offer
+Test faster transition to offer.
+4. Offer to Relevance Signal
+Test offer specificity and qualification question.
+5. Relevance to Next Step Proposed
+Test transition to action.
+6. Proposal to Acceptance
+Test next-step framing.
+7. Acceptance to Context / Finish
+Test post-acceptance context collection.
+8. Meeting Without Relevance Signal
+Test qualification question before meeting proposal.
+15. A/B test generator
+Create:
+generate_ab_test(recommendation, metrics) -> dict
+
+
+Return:
+{
+  "hypothesis": "...",
+  "variant_a": "...",
+  "variant_b": "...",
+  "main_metric": "...",
+  "guardrail_metrics": ["...", "..."],
+  "expected_effect": "..."
+}
+
+
+For technical bottleneck:
+Hypothesis:
+A significant part of the loss happens before script optimization is meaningful: some calls have no transcript despite meaningful duration or fixed timeout.
+Variant A:
+Current call and transcript logging logic.
+Variant B:
+Review and fix no-transcript handling: fixed timeout, bot_hangup, transcript saving, audio/text logging, and termination statuses. After that, compare Calls With Transcript Rate and suspicious no-transcript volume.
+Main metric:
+Calls With Transcript Rate
+
+
+Guardrails:
+Bot Hangup Without Transcript
+Fixed Timeout Without Transcript
+Average Duration of No-Transcript Calls
+
+
+For offer-to-relevance bottleneck, Variant B:
+Мы запускаем AI-продавца в первую линию: он сам прозванивает базу, задаёт первые вопросы и передаёт менеджерам только потенциально релевантных клиентов. Подскажите, у вас сейчас есть база или заявки, которые менеджеры регулярно обзванивают?
+
+
+For proposal-to-acceptance bottleneck, Variant B:
+Давайте сделаем не полноценную встречу, а короткий 15-минутный созвон с экспертом. Он покажет кейс по вашей отрасли и прикинет, есть ли экономика под ваш объём.
+
+
+For meeting-without-relevance bottleneck, Variant B:
+Подскажите, у вас есть база клиентов или заявок, которую менеджеры регулярно прозванивают?
+
+
+16. Ask the Dashboard
+Create:
+answer_analyst_question(
+    question,
+    metrics,
+    funnel_table,
+    enriched_df,
+    recommendation,
+    ab_test,
+    previous_context=None
+) -> dict
+
+
+Return:
+{
+  "answer": "...",
+  "supporting_metric": "...",
+  "related_stage": "...",
+  "recommended_action": "...",
+  "example_calls": dataframe_or_none,
+  "context": {
+    "last_topic": "...",
+    "last_stage": "...",
+    "last_filter": "...",
+    "last_recommendation_type": "..."
+  }
+}
+
+
+Support questions:
+Где самый большой drop-off?
+Почему Qualified Next Step Rate низкий?
+Сколько звонков без текста?
+Сколько подозрительных звонков без транскрипта?
+Есть ли длинные звонки без текста?
+Сколько звонков на фиксированном таймауте без текста?
+Покажи примеры подозрительных звонков без текста.
+Покажи примеры звонков, где был next step, но не было relevance signal.
+Какой A/B-тест запустить первым?
+Почему выбрана эта гипотеза?
+
+
+Support follow-ups through st.session_state:
+покажи примеры
+почему
+что делать
+какой тест
+сколько таких
+покажи подробнее
+
+
+If unclear and no context exists, show suggested questions.
+17. Optional local Gemma helper
+Gemma is optional.
+It must not be required to run the app.
+Use only on button click.
+Ollama endpoint:
+POST http://localhost:11434/api/generate
+
+
+Model:
+gemma4:2b
+
+
+.env.example:
+ENABLE_LOCAL_AI=false
+LOCAL_LLM_PROVIDER=ollama
+LOCAL_LLM_BASE_URL=http://localhost:11434
+LOCAL_LLM_MODEL=gemma4:2b
+LOCAL_LLM_TIMEOUT_SECONDS=120
+
+
+Gemma receives only compact summary:
+* main_problem;
+* why_it_matters;
+* supporting_metrics;
+* weakest_stage;
+* current_ab_test;
+* 3–5 example calls from affected stage;
+* technical diagnostics summary if technical problem.
+Gemma must return:
+* refined_hypothesis;
+* improved_variant_b;
+* main_metric;
+* guardrail_metrics;
+* why_this_test;
+* manual_review_suggestion.
+If Ollama is unavailable, show:
+Local Gemma is unavailable. The main dashboard continues to work without AI.
+
+
+Do not send the full dataset to Gemma.
+Do not use Gemma for mass classification.
+18. CSV export
+Export:
+phone_id
+timestamp
+duration_seconds
+status
+termination_reason
+record_url
+raw_transcript
+transcript_clean
+has_transcript
+transcript_length_chars
+funnel_stage_reached
+drop_off_stage
+has_relevance_signal
+relevance_signal_type
+next_step_proposed
+next_step_accepted
+next_step_type
+is_qualified_next_step
+is_meeting_without_relevance_signal
+no_transcript_type
+technical_suspect_no_transcript
+fixed_timeout_without_transcript
+bot_hangup_without_transcript
+early_no_dialog
+possible_system_anomaly
+
+
+19. README
+README must explain:
+* what the product does;
+* how to run;
+* where to put Excel;
+* how to upload a file;
+* main metric;
+* why Qualified Next Step Rate is better than Meeting Rate;
+* funnel stages;
+* drop-off logic;
+* technical/no-transcript risk;
+* why long calls without transcript matter;
+* adaptive overview logic;
+* Main Growth Opportunity logic;
+* A/B test generation;
+* Ask the Dashboard;
+* optional local Gemma helper;
+* Gemma is not required;
+* in production, Gemma helper can be replaced with OpenAI, Gemini, or Claude API;
+* limitations of rule-based analysis.
+Run instructions:
+pip install -r requirements.txt
+streamlit run app.py
+
+
+App URL:
+http://localhost:8501
+
+
+20. Error handling
+Handle:
+* missing file;
+* missing columns;
+* empty Excel;
+* invalid duration;
+* empty transcripts;
+* unclear analytical questions;
+* follow-up without context;
+* Ollama not running;
+* Gemma timeout.
+Show friendly messages.
+Do not show raw tracebacks.
+21. Definition of Done
+The product is complete when:
+1. App starts with streamlit run app.py.
+2. Default Excel loads from data/calls_week_anon.xlsx.
+3. Manual upload works.
+4. Required columns are validated.
+5. Duration parsing works.
+6. Transcripts are cleaned.
+7. Calls are classified by funnel stage.
+8. No-transcript calls are split into early no-dialog and suspicious no-transcript.
+9. Fixed timeouts without transcript are shown separately.
+10. Bot hangup without transcript is shown separately.
+11. Drop-off is calculated.
+12. Adaptive overview shows no more than 5–6 key elements.
+13. Funnel chart is displayed.
+14. Drop-off table is displayed.
+15. Main Growth Opportunity is generated.
+16. First A/B test is generated.
+17. Ask the Dashboard answers questions.
+18. Follow-up questions work with st.session_state.
+19. Example calls for manual review are shown.
+20. Optional Gemma helper does not break the app.
+21. If Ollama is not running, the app still works.
+22. Enriched CSV can be downloaded.
+23. README explains product logic and limitations.
+22. What not to build
+Do not build:
+* external AI API dependency;
+* mandatory OpenAI / Claude / Gemini key;
+* mass LLM processing of all calls;
+* complex multi-provider AI architecture;
+* large 25-file project structure;
+* production monitoring system;
+* perfect NLP classifier;
+* full test suite for every function;
+* CRM integration;
+* Google Sheets API;
+* audio processing;
+* speech-to-text;
+* complex authentication;
+* overloaded dashboard with all metrics on the first screen.
+The goal is a clean working analytical product that helps the analyst move from raw call logs to a product decision.
