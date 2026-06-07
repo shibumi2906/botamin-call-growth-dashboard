@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import re
+import logging
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 FUNNEL_STAGES = [
     "0_no_dialog",
@@ -280,6 +283,7 @@ def _classify_no_transcript(row: pd.Series) -> dict:
 
 def classify_calls(df: pd.DataFrame) -> pd.DataFrame:
     """Add funnel and diagnostic columns."""
+    logger.info("Classification started | rows=%s", len(df))
     enriched = df.copy()
 
     enriched["funnel_stage_reached"] = enriched.apply(_max_funnel_stage, axis=1)
@@ -315,4 +319,5 @@ def classify_calls(df: pd.DataFrame) -> pd.DataFrame:
     for col in no_tx.columns:
         enriched[col] = no_tx[col]
 
+    logger.info("Classification completed | rows=%s | no_dialog=%s | qualified=%s | suspicious_no_transcript=%s", len(enriched), int((enriched["funnel_stage_reached"] == "0_no_dialog").sum()), int(enriched["is_qualified_next_step"].sum()), int(enriched["technical_suspect_no_transcript"].sum()))
     return enriched

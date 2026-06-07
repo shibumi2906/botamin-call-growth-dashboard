@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from io import BytesIO
+import logging
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -25,6 +28,35 @@ from src.metrics import build_funnel_table, calculate_metrics, get_adaptive_metr
 from src.qa import SUGGESTED_QUESTIONS, answer_analyst_question
 from src.recommendations import generate_ab_test, generate_main_growth_opportunity
 
+
+
+def configure_logging() -> logging.Logger:
+    """Configure console and rotating file logging once per process."""
+    logs_dir = Path(__file__).resolve().parent / "logs"
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    root = logging.getLogger()
+    if not root.handlers:
+        root.setLevel(logging.INFO)
+        formatter = logging.Formatter(
+            "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+        )
+        console = logging.StreamHandler()
+        console.setFormatter(formatter)
+        file_handler = RotatingFileHandler(
+            logs_dir / "app.log",
+            maxBytes=2_000_000,
+            backupCount=3,
+            encoding="utf-8",
+        )
+        file_handler.setFormatter(formatter)
+        root.addHandler(console)
+        root.addHandler(file_handler)
+    return logging.getLogger(__name__)
+
+
+logger = configure_logging()
+logger.info("Application startup")
+
 st.set_page_config(
     page_title="Botamin Call Growth Dashboard",
     page_icon="📞",
@@ -42,6 +74,7 @@ st.markdown(
 @st.cache_data(show_spinner="Загрузка и анализ данных...")
 def run_pipeline(source_key: str, file_bytes: bytes | None) -> tuple:
     """Cached processing pipeline."""
+    logger.info("Pipeline started | source=%s | uploaded=%s", source_key, file_bytes is not None)
     if file_bytes is not None:
         source = BytesIO(file_bytes)
     else:
@@ -49,6 +82,7 @@ def run_pipeline(source_key: str, file_bytes: bytes | None) -> tuple:
 
     df, err = preprocess_calls(source)
     if err:
+        logger.error("Preprocessing failed | source=%s | error=%s", source_key, err)
         return None, None, None, None, None, err
 
     enriched = classify_calls(df)
@@ -56,6 +90,7 @@ def run_pipeline(source_key: str, file_bytes: bytes | None) -> tuple:
     metrics = calculate_metrics(enriched, funnel_table)
     recommendation = generate_main_growth_opportunity(metrics, funnel_table)
     ab_test = generate_ab_test(recommendation, metrics)
+    logger.info("Pipeline completed | rows=%s | recommendation_type=%s", len(enriched), recommendation.get("recommendation_type"))
     return enriched, funnel_table, metrics, recommendation, ab_test, None
 
 
@@ -68,10 +103,13 @@ def _load_data():
         file_bytes = uploaded.getvalue()
         file_name = uploaded.name
         source_key = f"upload:{file_name}:{len(file_bytes)}"
+        logger.info("Uploaded file selected | name=%s | bytes=%s", file_name, len(file_bytes))
     else:
         if not DEFAULT_DATA_PATH.exists():
+            logger.error("Default data file not found | path=%s", DEFAULT_DATA_PATH)
             return None, None, None, None, None, "Файл data/calls_week_anon.xlsx не найден. Загрузите Excel вручную.", "—"
         source_key = f"default:{DEFAULT_DATA_PATH.stat().st_mtime}"
+        logger.info("Default data file selected | path=%s", DEFAULT_DATA_PATH)
 
     return (*run_pipeline(source_key, file_bytes), file_name)
 
@@ -101,6 +139,7 @@ with st.sidebar:
 try:
     enriched_df, funnel_table, metrics, recommendation, ab_test, load_error, loaded_name = _load_data()
 except Exception:
+    logger.exception("Unexpected application error during data loading")
     st.error("Ошибка загрузки: произошла непредвиденная ошибка при обработке файла.")
     st.stop()
 
@@ -388,6 +427,7 @@ with tab_preview:
 with tab_export:
     st.subheader("CSV Export")
     csv_data = to_csv_bytes(enriched_df)
+    logger.info("CSV export prepared | rows=%s", len(enriched_df))
     st.download_button(
         label="Скачать enriched CSV",
         data=csv_data,
