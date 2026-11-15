@@ -184,7 +184,7 @@ with c2:
     st.markdown(f"**Variant B:** {ab_test['variant_b']}")
     st.markdown(f"**Main metric:** {ab_test['main_metric']}")
     st.markdown(f"**Guardrails:** {', '.join(ab_test['guardrail_metrics'])}")
-    st.markdown(f"**Expected effect:** {ab_test['expected_effect']}")
+    st.markdown(f"**Гипотеза эффекта (не прогноз):** {ab_test['expected_effect']}")
 
 st.divider()
 
@@ -409,7 +409,8 @@ with tab_examples:
     preview_cols = [
         "phone_id", "timestamp", "duration_seconds", "funnel_stage_reached",
         "drop_off_stage", "has_relevance_signal", "next_step_proposed",
-        "next_step_accepted", "termination_reason",
+        "next_step_accepted", "proposal_evidence", "acceptance_evidence",
+        "acceptance_proposal_evidence", "relevance_evidence", "classification_needs_review", "termination_reason",
     ]
 
     for title, condition in sections:

@@ -100,7 +100,7 @@ def clean_transcript(text) -> str:
     cleaned = cleaned.replace("\r\n", "\n").replace("\r", "\n")
     cleaned = re.sub(r"\[.*?\]", " ", cleaned)
     cleaned = re.sub(r"<.*?>", " ", cleaned)
-    cleaned = re.sub(r"\s+", " ", cleaned)
+    cleaned = re.sub(r"[^\S\n]+", " ", cleaned)
     return cleaned.strip().lower()
 
 

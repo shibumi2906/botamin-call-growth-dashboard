@@ -1,0 +1,35 @@
+{
+  "sample_size": 24,
+  "annotation": "Single model reviewer, manual reading; not independent human validation",
+  "usage": "Development sample used to refine rules; not a held-out accuracy estimate",
+  "selection": "16 user-containing transcripts, random_state=42; 8 meeting-keyword transcripts, random_state=7",
+  "metrics": {
+    "has_relevance_signal": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "tn": 23,
+      "precision": 1.0,
+      "recall": 1.0,
+      "error_rows": []
+    },
+    "next_step_proposed": {
+      "tp": 9,
+      "fp": 0,
+      "fn": 0,
+      "tn": 15,
+      "precision": 1.0,
+      "recall": 1.0,
+      "error_rows": []
+    },
+    "next_step_accepted": {
+      "tp": 4,
+      "fp": 0,
+      "fn": 0,
+      "tn": 20,
+      "precision": 1.0,
+      "recall": 1.0,
+      "error_rows": []
+    }
+  }
+}

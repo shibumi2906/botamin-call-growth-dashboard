@@ -70,7 +70,7 @@ NEXT_STEP_PROPOSAL = [
     "давайте назначим", "созвон", "встреча", "демо", "презентация",
     "передам специалисту", "передам эксперту", "можем показать",
     "отправить материалы", "перезвонить позже", "подберём время",
-    "эксперт созвонится", "онлайн-звонок",
+    "эксперт созвонится", "онлайн-звонок", "созвониться", "встречу", "перезвонить",
 ]
 NEXT_STEP_ACCEPTANCE = [
     "давайте", "да", "можно", "хорошо", "отправьте", "пусть перезвонят",
@@ -105,85 +105,124 @@ def _find_first_group(text: str, groups: dict[str, list[str]]) -> str | None:
     return None
 
 
+ROLE_MARKER = re.compile(
+    r"(?<!\w)(bot|бот|assistant|ассистент|ai|user|юзер|клиент|client|абонент)\s*:",
+    re.IGNORECASE,
+)
+BOT_ROLES = {"bot", "бот", "assistant", "ассистент", "ai"}
+
+
+def parse_turns(text: str) -> list[tuple[str, str]]:
+    """Keep speaker order, including inline markers and multiline utterances.
+
+    Unlabelled text is intentionally not attributed to either participant.
+    """
+    markers = list(ROLE_MARKER.finditer(text))
+    turns = []
+    for i, marker in enumerate(markers):
+        end = markers[i + 1].start() if i + 1 < len(markers) else len(text)
+        utterance = text[marker.end():end].strip(" \n\r;|")
+        if utterance:
+            role = "bot" if marker.group(1).lower() in BOT_ROLES else "user"
+            turns.append((role, utterance.lower()))
+    return turns
+
+
 def _bot_lines(text: str) -> str:
-    lines = re.split(r"[\n;|]+", text)
-    bot_parts = []
-    for line in lines:
-        low = line.strip().lower()
-        if low.startswith(("bot:", "бот:", "assistant:", "ассистент:", "ai:")):
-            bot_parts.append(low)
-    return " ".join(bot_parts) if bot_parts else text
+    return " ".join(t for role, t in parse_turns(text) if role == "bot")
 
 
 def _user_lines(text: str) -> str:
-    lines = re.split(r"[\n;|]+", text)
-    user_parts = []
-    for line in lines:
-        low = line.strip().lower()
-        if low.startswith(("user:", "юзер:", "клиент:", "client:", "абонент:")):
-            user_parts.append(low)
-    return " ".join(user_parts) if user_parts else text
+    return " ".join(t for role, t in parse_turns(text) if role == "user")
+
+
+def _phrase_present(text: str, phrase: str) -> bool:
+    return re.search(r"(?<!\w)" + re.escape(phrase) + r"(?!\w)", text) is not None
 
 
 def _detect_relevance(text: str) -> tuple[bool, str | None]:
-    if not text:
-        return False, None
-
-    user_text = _user_lines(text)
-    check_text = user_text if user_text.strip() else text
-
-    if _contains_any(check_text, NOT_RELEVANCE) and not any(
-        _contains_any(check_text, g)
-        for g in (RELEVANCE_ROLE, RELEVANCE_SALES, RELEVANCE_INTEREST)
-    ):
-        return False, None
-
     groups = {
         "role_decision_maker": RELEVANCE_ROLE,
         "sales_team_leads": RELEVANCE_SALES,
         "meaningful_interest": RELEVANCE_INTEREST,
     }
-    found = _find_first_group(check_text, groups)
-    if found:
-        return True, found
+    for role, utterance in parse_turns(text):
+        if role != "user":
+            continue
+        for sentence in re.split(r"[.!?;]+", utterance):
+            if re.search(r"\b(не|нет|без)\b", sentence):
+                continue
+            found = _find_first_group(sentence, groups)
+            if found:
+                return True, found
     return False, None
+
+
+def _proposal_type(utterance: str) -> str | None:
+    if re.search(r"отмечаю встречу|зафиксировала|зафиксировал", utterance):
+        return None
+    if not _contains_any(utterance, NEXT_STEP_PROPOSAL):
+        return None
+    if re.search(r"\b(не|нет)\b.{0,20}(встреч|демо|созвон)", utterance):
+        return None
+    for kw in MEETING_KEYWORDS:
+        if kw in utterance:
+            return "meeting" if kw in ("встреча", "назначим") else kw
+    if "материал" in utterance:
+        return "materials"
+    if "перезвон" in utterance:
+        return "callback"
+    if "эксперт" in utterance or "специалист" in utterance:
+        return "expert_call"
+    return "other"
+
+
+def _accepts(utterance: str) -> bool:
+    if re.search(r"\b(не|нет)\b|подумаю|подумать|неудобно", utterance):
+        return False
+    # Bare assent must answer the proposal, not occur inside another conversation.
+    if re.fullmatch(r"[\s,!.]*(ну[, ]*)?(да|давайте|можно|хорошо|готов|подходит|угу)[\s,!.]*", utterance):
+        return True
+    strong = ["завтра", "после обеда", "на почту", "в телеграм", "в понедельник",
+              "запишите", "подходит", "отправьте", "пусть перезвонят", "свяжитесь"]
+    return any(_phrase_present(utterance, phrase) for phrase in strong)
+
+
+def _next_step_analysis(text: str) -> dict:
+    result = {"next_step_proposed": False, "next_step_type": "",
+              "next_step_accepted": False, "proposal_evidence": "",
+              "acceptance_evidence": "", "acceptance_proposal_evidence": ""}
+    pending = ""
+    for role, utterance in parse_turns(text):
+        if role == "bot":
+            proposal_type = _proposal_type(utterance)
+            if proposal_type:
+                pending = utterance
+                result.update(next_step_proposed=True, next_step_type=proposal_type,
+                              proposal_evidence="bot: " + utterance,
+                              next_step_accepted=False, acceptance_evidence="",
+                              acceptance_proposal_evidence="")
+            else:
+                # A short yes after a different bot question is not proposal acceptance.
+                pending = ""
+        elif pending:
+            if _accepts(utterance):
+                result.update(next_step_accepted=True,
+                              acceptance_evidence="user: " + utterance,
+                              acceptance_proposal_evidence="bot: " + pending)
+            elif re.search(r"\b(нет|не)\b|подумаю|подумать", utterance):
+                result.update(next_step_accepted=False, acceptance_evidence="",
+                              acceptance_proposal_evidence="")
+    return result
 
 
 def _detect_next_step_proposed(text: str) -> tuple[bool, str | None]:
-    bot_text = _bot_lines(text)
-    if _contains_any(bot_text, NEXT_STEP_PROPOSAL):
-        for kw in MEETING_KEYWORDS:
-            if kw in bot_text:
-                return True, "meeting" if kw in ("встреча", "назначим") else kw
-        if "материал" in bot_text:
-            return True, "materials"
-        if "перезвон" in bot_text:
-            return True, "callback"
-        if "эксперт" in bot_text or "специалист" in bot_text:
-            return True, "expert_call"
-        return True, "other"
-    return False, None
+    result = _next_step_analysis(text)
+    return result["next_step_proposed"], result["next_step_type"] or None
 
 
 def _detect_next_step_accepted(text: str, proposed: bool) -> bool:
-    if not proposed:
-        return False
-    user_text = _user_lines(text)
-    check_text = user_text if user_text.strip() else text
-
-    proposal_idx = -1
-    bot_text = _bot_lines(text)
-    for phrase in NEXT_STEP_PROPOSAL:
-        idx = bot_text.rfind(phrase)
-        if idx > proposal_idx:
-            proposal_idx = idx
-
-    after_proposal = check_text[proposal_idx:] if proposal_idx >= 0 else check_text
-    acceptance_hits = sum(1 for p in NEXT_STEP_ACCEPTANCE if p in after_proposal)
-    strong = ["завтра", "после обеда", "на почту", "в телеграм", "в понедельник", "запишите", "готов", "подходит", "отправьте"]
-    if any(s in after_proposal for s in strong):
-        return True
-    return acceptance_hits >= 1 and len(after_proposal.split()) > 2
+    return bool(proposed and _next_step_analysis(text)["next_step_accepted"])
 
 
 def _detect_context_finish(text: str, accepted: bool) -> bool:
@@ -194,8 +233,6 @@ def _detect_context_finish(text: str, accepted: bool) -> bool:
     if _contains_any(text, ["не звоните", "не актуально", "не интересно", "не подходит"]):
         return True
     if _contains_any(text, ["передам директору", "соединю с", "коммерческому директору"]):
-        return True
-    if accepted:
         return True
     return False
 
@@ -232,7 +269,7 @@ def _max_funnel_stage(row: pd.Series) -> str:
     if _detect_next_step_accepted(text, proposed):
         stage = max(stage, "6_next_step_accepted", key=lambda s: STAGE_ORDER[s])
 
-    if _detect_context_finish(text, STAGE_ORDER[stage] >= STAGE_ORDER["6_next_step_accepted"]):
+    if _detect_context_finish(_user_lines(text), STAGE_ORDER[stage] >= STAGE_ORDER["6_next_step_accepted"]):
         stage = max(stage, "7_context_collected_or_correctly_finished", key=lambda s: STAGE_ORDER[s])
 
     return stage
@@ -293,13 +330,16 @@ def classify_calls(df: pd.DataFrame) -> pd.DataFrame:
     enriched["has_relevance_signal"] = relevance.apply(lambda x: x[0])
     enriched["relevance_signal_type"] = relevance.apply(lambda x: x[1] or "")
 
-    proposals = enriched["transcript_clean"].apply(_detect_next_step_proposed)
-    enriched["next_step_proposed"] = proposals.apply(lambda x: x[0])
-    enriched["next_step_type"] = proposals.apply(lambda x: x[1] or "")
-
-    enriched["next_step_accepted"] = enriched.apply(
-        lambda r: _detect_next_step_accepted(r["transcript_clean"], r["next_step_proposed"]),
-        axis=1,
+    analyses = enriched["transcript_clean"].apply(_next_step_analysis)
+    for column in ("next_step_proposed", "next_step_type", "next_step_accepted",
+                   "proposal_evidence", "acceptance_evidence", "acceptance_proposal_evidence"):
+        enriched[column] = analyses.apply(lambda result: result[column])
+    enriched["relevance_evidence"] = enriched["transcript_clean"].apply(
+        lambda text: next(("user: " + utterance for role, utterance in parse_turns(text)
+                           if role == "user" and _detect_relevance("user: " + utterance)[0]), "")
+    )
+    enriched["classification_needs_review"] = enriched["transcript_clean"].apply(
+        lambda text: bool(text) and not any(role == "user" for role, _ in parse_turns(text))
     )
 
     enriched["is_qualified_next_step"] = (

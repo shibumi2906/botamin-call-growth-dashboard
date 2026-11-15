@@ -113,10 +113,10 @@ def generate_ab_test(recommendation: dict, metrics: dict) -> dict:
                 "Fixed Timeout Without Transcript",
                 "Average Duration of No-Transcript Calls",
             ],
-            "expected_effect": "Рост Calls With Transcript Rate на 5–15 п.п. после устранения системных сбоев.",
+            "expected_effect": "Гипотеза: Рост Calls With Transcript Rate. Величина эффекта не оценена; требуется A/B-тест с доверительным интервалом.",
         }
 
-    if stage == "offer_to_relevance_signal" or rec_type == "offer":
+    if rec_type != "risk" and (stage == "offer_to_relevance_signal" or rec_type == "offer"):
         return {
             "hypothesis": "Клиенты не видят связь оффера со своей задачей — нет relevance signal после оффера.",
             "variant_a": "Текущий скрипт оффера.",
@@ -127,7 +127,7 @@ def generate_ab_test(recommendation: dict, metrics: dict) -> dict:
             ),
             "main_metric": "Offer → Relevance Signal Conversion",
             "guardrail_metrics": ["Offer Reach Rate", "Conversation Start Rate"],
-            "expected_effect": "Рост Offer → Relevance Signal Conversion на 3–8 п.п.",
+            "expected_effect": "Гипотеза: Рост Offer → Relevance Signal Conversion. Величина эффекта не оценена; требуется A/B-тест с доверительным интервалом.",
         }
 
     if stage == "proposal_to_acceptance" or rec_type == "next_step":
@@ -140,7 +140,7 @@ def generate_ab_test(recommendation: dict, metrics: dict) -> dict:
             ),
             "main_metric": "Proposal → Acceptance Conversion",
             "guardrail_metrics": ["Next Step Proposal Rate", "Qualified Next Step Rate"],
-            "expected_effect": "Рост Proposal → Acceptance Conversion на 5–10 п.п.",
+            "expected_effect": "Гипотеза: Рост Proposal → Acceptance Conversion. Величина эффекта не оценена; требуется A/B-тест с доверительным интервалом.",
         }
 
     if rec_type == "risk" or stage == "offer_to_relevance_signal":
@@ -153,7 +153,7 @@ def generate_ab_test(recommendation: dict, metrics: dict) -> dict:
             ),
             "main_metric": "Qualified Next Step Rate",
             "guardrail_metrics": ["Meeting Without Relevance Signal Rate", "Next Step Proposal Rate"],
-            "expected_effect": "Снижение Meeting Without Relevance Signal Rate и рост Qualified Next Step Rate.",
+            "expected_effect": "Гипотеза: Снижение Meeting Without Relevance Signal Rate и рост Qualified Next Step Rate. Величина эффекта не оценена; требуется A/B-тест с доверительным интервалом.",
         }
 
     stage_tests = {
@@ -163,7 +163,7 @@ def generate_ab_test(recommendation: dict, metrics: dict) -> dict:
             "variant_b": "Здравствуйте! Буквально 30 секунд — удобно? Я коротко расскажу, как AI-агент помогает отделам продаж.",
             "main_metric": "Conversation Start Rate",
             "guardrail_metrics": ["Early No-dialog Calls", "Consent → Offer drop-off"],
-            "expected_effect": "Рост Conversation Start Rate на 3–5 п.п.",
+            "expected_effect": "Гипотеза: Рост Conversation Start Rate. Величина эффекта не оценена; требуется A/B-тест с доверительным интервалом.",
         },
         "consent_to_offer": {
             "hypothesis": "После согласия бот слишком долго переходит к офферу.",
@@ -171,7 +171,7 @@ def generate_ab_test(recommendation: dict, metrics: dict) -> dict:
             "variant_b": "Спасибо! Сразу к делу: мы автоматизируем прозвон базы AI-агентом и передаём менеджерам только горячих клиентов.",
             "main_metric": "Offer Reach Rate",
             "guardrail_metrics": ["Conversation Start Rate", "Offer → Relevance Signal Conversion"],
-            "expected_effect": "Рост Offer Reach Rate на 3–7 п.п.",
+            "expected_effect": "Гипотеза: Рост Offer Reach Rate. Величина эффекта не оценена; требуется A/B-тест с доверительным интервалом.",
         },
     }
 
@@ -187,5 +187,5 @@ def generate_ab_test(recommendation: dict, metrics: dict) -> dict:
         ),
         "main_metric": "Qualified Next Step Rate",
         "guardrail_metrics": ["Relevance Signal Rate", "Next Step Proposal Rate"],
-        "expected_effect": "Рост Qualified Next Step Rate на 2–5 п.п.",
+        "expected_effect": "Гипотеза: Рост Qualified Next Step Rate. Величина эффекта не оценена; требуется A/B-тест с доверительным интервалом.",
     }

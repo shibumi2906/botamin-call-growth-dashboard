@@ -29,7 +29,8 @@ def _sample_calls(df: pd.DataFrame, condition, n: int = 5) -> pd.DataFrame | Non
     cols = [
         "phone_id", "timestamp", "duration_seconds", "termination_reason",
         "funnel_stage_reached", "drop_off_stage", "has_relevance_signal",
-        "next_step_proposed", "next_step_accepted", "transcript_clean",
+        "next_step_proposed", "next_step_accepted", "proposal_evidence", "acceptance_evidence",
+        "acceptance_proposal_evidence", "relevance_evidence", "classification_needs_review", "transcript_clean",
     ]
     available = [c for c in cols if c in subset.columns]
     return subset[available].copy()
