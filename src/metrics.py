@@ -17,7 +17,7 @@ FUNNEL_LABELS = {
     "4_relevance_signal_detected": "Relevance Signal",
     "5_next_step_proposed": "Next Step Proposed",
     "6_next_step_accepted": "Next Step Accepted",
-    "7_context_collected_or_correctly_finished": "Context / Finished",
+    "7_context_collected": "Context Collected After Acceptance",
 }
 
 DROP_OFF_LABELS = {
@@ -44,16 +44,18 @@ def build_funnel_table(df: pd.DataFrame) -> pd.DataFrame:
     logger.info("Building funnel table | rows=%s", total)
     rows = []
 
+    # Acceptance is an explicit signal, never inferred from a completed outcome.
+    reached = {}
+    for stage in FUNNEL_STAGES:
+        mask = df["funnel_stage_reached"].map(lambda s: STAGE_ORDER[s] >= STAGE_ORDER[stage])
+        if STAGE_ORDER[stage] >= STAGE_ORDER["6_next_step_accepted"]:
+            mask &= df["next_step_proposed"] & df["next_step_accepted"]
+        reached[stage] = mask
+
     for i, stage in enumerate(FUNNEL_STAGES):
         count = int((df["funnel_stage_reached"] == stage).sum())
-        reached_at_least = int(
-            df["funnel_stage_reached"].map(lambda s: STAGE_ORDER[s] >= STAGE_ORDER[stage]).sum()
-        )
-        prev_reached = total if i == 0 else int(
-            df["funnel_stage_reached"].map(
-                lambda s: STAGE_ORDER[s] >= STAGE_ORDER[FUNNEL_STAGES[i - 1]]
-            ).sum()
-        )
+        reached_at_least = int(reached[stage].sum())
+        prev_reached = total if i == 0 else int(reached[FUNNEL_STAGES[i - 1]].sum())
         conversion = _rate(reached_at_least, prev_reached) if i > 0 else 100.0
         drop_off = prev_reached - reached_at_least if i > 0 else 0
         drop_off_pct = _rate(drop_off, prev_reached) if i > 0 and prev_reached else 0.0

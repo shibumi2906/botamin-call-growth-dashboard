@@ -17,7 +17,7 @@ FUNNEL_STAGES = [
     "4_relevance_signal_detected",
     "5_next_step_proposed",
     "6_next_step_accepted",
-    "7_context_collected_or_correctly_finished",
+    "7_context_collected",
 ]
 
 DROP_OFF_MAP = {
@@ -28,7 +28,7 @@ DROP_OFF_MAP = {
     "4_relevance_signal_detected": "relevance_to_next_step_proposed",
     "5_next_step_proposed": "proposal_to_acceptance",
     "6_next_step_accepted": "acceptance_to_context_or_finish",
-    "7_context_collected_or_correctly_finished": "completed",
+    "7_context_collected": "completed",
 }
 
 STAGE_ORDER = {stage: idx for idx, stage in enumerate(FUNNEL_STAGES)}
@@ -80,9 +80,6 @@ NEXT_STEP_ACCEPTANCE = [
 
 CONTEXT_FINISH = [
     "на почту", "в телеграм", "завтра", "после обеда", "в понедельник",
-    "перезвоните", "не звоните", "не актуально", "не интересно",
-    "отправьте материалы", "передам директору", "соединю с",
-    "запишите", "готов", "подходит", "эксперт", "созвон", "демо",
 ]
 
 NOT_RELEVANCE = [
@@ -188,10 +185,21 @@ def _accepts(utterance: str) -> bool:
     return any(_phrase_present(utterance, phrase) for phrase in strong)
 
 
+def _refusal_outcome(utterance: str) -> str | None:
+    """Explicit refusal can revoke acceptance even after a different bot turn."""
+    if re.search(r"\bне\s+звоните\b|\bбольше\s+не\s+звон", utterance):
+        return "do_not_call"
+    if re.search(r"\b(отмен\w*|передум\w*)\b|\bне\s*(интересно|актуально)\b|"
+                 r"\bне\s+(подходит|надо|нужно|хочу|буду)\b", utterance):
+        return "refused"
+    return None
+
+
 def _next_step_analysis(text: str) -> dict:
     result = {"next_step_proposed": False, "next_step_type": "",
               "next_step_accepted": False, "proposal_evidence": "",
-              "acceptance_evidence": "", "acceptance_proposal_evidence": ""}
+              "acceptance_evidence": "", "acceptance_proposal_evidence": "",
+              "call_outcome": "no_next_step", "outcome_evidence": ""}
     pending = ""
     for role, utterance in parse_turns(text):
         if role == "bot":
@@ -202,17 +210,27 @@ def _next_step_analysis(text: str) -> dict:
                               proposal_evidence="bot: " + utterance,
                               next_step_accepted=False, acceptance_evidence="",
                               acceptance_proposal_evidence="")
+                if result["call_outcome"] not in ("refused", "do_not_call"):
+                    result.update(call_outcome="proposed", outcome_evidence="")
             else:
                 # A short yes after a different bot question is not proposal acceptance.
                 pending = ""
-        elif pending:
-            if _accepts(utterance):
+        else:
+            refusal = _refusal_outcome(utterance)
+            if refusal:
+                result.update(next_step_accepted=False, acceptance_evidence="",
+                              acceptance_proposal_evidence="", call_outcome=refusal,
+                              outcome_evidence="user: " + utterance)
+                pending = ""
+            elif pending and _accepts(utterance):
                 result.update(next_step_accepted=True,
                               acceptance_evidence="user: " + utterance,
-                              acceptance_proposal_evidence="bot: " + pending)
-            elif re.search(r"\b(нет|не)\b|подумаю|подумать", utterance):
+                              acceptance_proposal_evidence="bot: " + pending,
+                              call_outcome="accepted", outcome_evidence="user: " + utterance)
+            elif pending and re.search(r"\b(нет|не)\b|подумаю|подумать", utterance):
                 result.update(next_step_accepted=False, acceptance_evidence="",
-                              acceptance_proposal_evidence="")
+                              acceptance_proposal_evidence="", call_outcome="not_agreed",
+                              outcome_evidence="user: " + utterance)
     return result
 
 
@@ -226,15 +244,8 @@ def _detect_next_step_accepted(text: str, proposed: bool) -> bool:
 
 
 def _detect_context_finish(text: str, accepted: bool) -> bool:
-    if not text:
-        return False
-    if accepted and _contains_any(text, CONTEXT_FINISH):
-        return True
-    if _contains_any(text, ["не звоните", "не актуально", "не интересно", "не подходит"]):
-        return True
-    if _contains_any(text, ["передам директору", "соединю с", "коммерческому директору"]):
-        return True
-    return False
+    """Only context in the currently valid acceptance advances the funnel."""
+    return accepted and _contains_any(text, CONTEXT_FINISH)
 
 
 def _max_funnel_stage(row: pd.Series) -> str:
@@ -262,15 +273,15 @@ def _max_funnel_stage(row: pd.Series) -> str:
     if has_rel:
         stage = max(stage, "4_relevance_signal_detected", key=lambda s: STAGE_ORDER[s])
 
-    proposed, _ = _detect_next_step_proposed(text)
-    if proposed:
+    next_step = _next_step_analysis(text)
+    if next_step["next_step_proposed"]:
         stage = max(stage, "5_next_step_proposed", key=lambda s: STAGE_ORDER[s])
 
-    if _detect_next_step_accepted(text, proposed):
+    if next_step["next_step_accepted"]:
         stage = max(stage, "6_next_step_accepted", key=lambda s: STAGE_ORDER[s])
 
-    if _detect_context_finish(_user_lines(text), STAGE_ORDER[stage] >= STAGE_ORDER["6_next_step_accepted"]):
-        stage = max(stage, "7_context_collected_or_correctly_finished", key=lambda s: STAGE_ORDER[s])
+    if _detect_context_finish(next_step["acceptance_evidence"], next_step["next_step_accepted"]):
+        stage = "7_context_collected"
 
     return stage
 
@@ -332,7 +343,8 @@ def classify_calls(df: pd.DataFrame) -> pd.DataFrame:
 
     analyses = enriched["transcript_clean"].apply(_next_step_analysis)
     for column in ("next_step_proposed", "next_step_type", "next_step_accepted",
-                   "proposal_evidence", "acceptance_evidence", "acceptance_proposal_evidence"):
+                   "proposal_evidence", "acceptance_evidence", "acceptance_proposal_evidence",
+                   "call_outcome", "outcome_evidence"):
         enriched[column] = analyses.apply(lambda result: result[column])
     enriched["relevance_evidence"] = enriched["transcript_clean"].apply(
         lambda text: next(("user: " + utterance for role, utterance in parse_turns(text)

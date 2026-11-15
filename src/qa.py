@@ -29,7 +29,7 @@ def _sample_calls(df: pd.DataFrame, condition, n: int = 5) -> pd.DataFrame | Non
     cols = [
         "phone_id", "timestamp", "duration_seconds", "termination_reason",
         "funnel_stage_reached", "drop_off_stage", "has_relevance_signal",
-        "next_step_proposed", "next_step_accepted", "proposal_evidence", "acceptance_evidence",
+        "next_step_proposed", "next_step_accepted", "call_outcome", "outcome_evidence", "proposal_evidence", "acceptance_evidence",
         "acceptance_proposal_evidence", "relevance_evidence", "classification_needs_review", "transcript_clean",
     ]
     available = [c for c in cols if c in subset.columns]
@@ -37,7 +37,7 @@ def _sample_calls(df: pd.DataFrame, condition, n: int = 5) -> pd.DataFrame | Non
 
 
 def _weakest_drop_off(funnel_table: pd.DataFrame) -> tuple[str, float, int]:
-    subset = funnel_table[funnel_table["stage"] != "7_context_collected_or_correctly_finished"]
+    subset = funnel_table[funnel_table["stage"] != "7_context_collected"]
     if subset.empty:
         return "before_contact", 0.0, 0
     row = subset.loc[subset["drop_off_pct"].idxmax()]

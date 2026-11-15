@@ -20,6 +20,8 @@ EXPORT_COLUMNS = [
     "transcript_length_chars",
     "funnel_stage_reached",
     "drop_off_stage",
+    "call_outcome",
+    "outcome_evidence",
     "has_relevance_signal",
     "relevance_signal_type",
     "next_step_proposed",

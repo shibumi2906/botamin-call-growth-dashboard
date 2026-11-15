@@ -23,13 +23,15 @@
       "error_rows": []
     },
     "next_step_accepted": {
-      "tp": 4,
+      "tp": 3,
       "fp": 0,
-      "fn": 0,
+      "fn": 1,
       "tn": 20,
       "precision": 1.0,
-      "recall": 1.0,
-      "error_rows": []
+      "recall": 0.75,
+      "error_rows": [
+        10210
+      ]
     }
   }
 }

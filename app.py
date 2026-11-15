@@ -409,7 +409,7 @@ with tab_examples:
     preview_cols = [
         "phone_id", "timestamp", "duration_seconds", "funnel_stage_reached",
         "drop_off_stage", "has_relevance_signal", "next_step_proposed",
-        "next_step_accepted", "proposal_evidence", "acceptance_evidence",
+        "next_step_accepted", "call_outcome", "outcome_evidence", "proposal_evidence", "acceptance_evidence",
         "acceptance_proposal_evidence", "relevance_evidence", "classification_needs_review", "termination_reason",
     ]
 
